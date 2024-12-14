@@ -1,15 +1,21 @@
 import os
 import sys
+import time
 import uuid
 import threading
-import time
+import pika
 import Pyro5.api
+import psutil
+import serpent
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 from mydfs.utils.get_proxy_by_name import get_proxy_by_name
 from mydfs.models.DataNode.Shard import Shard
 
-INTERVAL_SHARD_REPORT = 10
+INTERVAL_VITALS_REPORT = 20
+
+BROKER_URL = "localhost"
+VITALS_EXCHANGE_NAME = "vitals"
 
 if os.path.exists('data_node_config.txt'):
   with open('data_node_config.txt', 'r') as f:
@@ -27,23 +33,57 @@ class DataNodeService:
     self.TOKEN = TOKEN
     self.__cluster_manager_proxy = get_proxy_by_name("cluster-manager")
     self.__shards : list[Shard] = [Shard(file_name=f"shard_{i}.dat", file_path="/tmp", shard_size=10) for i in range(2)]
-      
+    
+    try:
+      self.__brokker_connection = pika.BlockingConnection(pika.ConnectionParameters(BROKER_URL))
+    except Exception as e:
+      print(f"Failed to connect to broker: {e}")
+      exit(1)
+
     try:
       self.__keep_running = True
-      self.__report_thread = threading.Thread(target=self.__report_shards_periodically)
-      self.__report_thread.start()
+      self.__vitals_thread = threading.Thread(target=self.__vitals_thread)
+      self.__vitals_thread.start()
     except Exception as e:
-      print(f"Failed to connect to cluster manager: {e}")
+      print(f"Failed to start vitals thread: {e}")
+
+  def __del__(self):
+    self.__keep_running = False
+    if self.__vitals_thread.is_alive():
+      self.__vitals_thread.join()
+    if self.__brokker_connection.is_open:
+      self.__brokker_connection.close()
+    print(f"DataNode {self.TOKEN} stopped")
 
   def __report_shards_periodically(self):
-    cluster_manager_proxy = get_proxy_by_name("cluster-manager")
-    while self.__keep_running:
-      try:
-        cluster_manager_proxy.report_shards(self.TOKEN, [shard.file_name for shard in self.__shards])
-      except Exception as e:
-        print(f"Failed to report shards: {e}")
-      time.sleep(INTERVAL_SHARD_REPORT)
+    try:
+      self.__cluster_manager_proxy.report_shards(self.TOKEN, [shard.file_name for shard in self.__shards])
+    except Exception as e:
+      print(f"Failed to report shards: {e}")
 
+  def __get_system_info(self):
+    cpu_usage = psutil.cpu_percent(interval=1)
+    ram_info = psutil.virtual_memory()
+    disk_info = psutil.disk_usage('/')
+    return {
+      'cpu_usage': cpu_usage,
+      'ram_available': ram_info.available,
+      'disk_available': disk_info.free
+    }
+  
+  def __vitals_thread(self):
+      try:
+        channel = self.__brokker_connection.channel()
+        channel.exchange_declare(exchange=VITALS_EXCHANGE_NAME, exchange_type='direct')
+        while self.__keep_running:
+          vitals = self.__get_system_info()
+          vitals.update({'token': self.TOKEN})
+          channel.basic_publish(exchange=VITALS_EXCHANGE_NAME, routing_key='', body=serpent.dumps(vitals))
+          time.sleep(INTERVAL_VITALS_REPORT)
+      except Exception as e:
+        print(f"Failed to send vitals: {e}")
+        exit(1)
+      
 
 if __name__ == "__main__":
   with Pyro5.api.Daemon() as daemon:
