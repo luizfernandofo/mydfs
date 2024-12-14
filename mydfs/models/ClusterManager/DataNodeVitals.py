@@ -18,7 +18,11 @@ class DataNodeVitals:
     self.__last_updated = time.time_ns()
 
   def time_since_last_update(self) -> int:
-    return time.time_ns() - self.__last_updated
+    return (time.time_ns() - self.__last_updated) // 1e9
   
   def can_store_n_shards(self, n: int) -> bool:
     return self.__disk_available > n * SHARD_SIZE
+  
+  @property
+  def cpu_usage(self) -> float:
+    return self.__cpu_usage
