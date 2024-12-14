@@ -27,9 +27,3 @@ class Shard:
   @shard_size.setter
   def shard_size(self, value: int):
     self.__shard_size = value
-
-if __name__ == "__main__":
-  s = Shard("teste.txt", "/tmp", 10)
-  print(s.file_name)
-  s.file_name = "teste2.txt"
-  print(s.file_name)
