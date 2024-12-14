@@ -6,6 +6,7 @@ import pika
 import serpent
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+from mydfs.models.ClusterManager.DataNodesConnected import DataNodesConnected
 from mydfs.models.ClusterManager.FileSystem import FileSystem
 from mydfs.utils.lock_decorator import synchronized
 
@@ -17,6 +18,7 @@ VITALS_EXCHANGE_NAME = "vitals"
 class ClusterManagerService:
   def __init__(self):
     self.__file_system = FileSystem()
+    self._data_nodes_connected = DataNodesConnected()
 
     try:
       self.__brokker_connection = pika.BlockingConnection(pika.ConnectionParameters(BROKER_URL))
@@ -39,19 +41,21 @@ class ClusterManagerService:
       self.__brokker_connection.close()
 
   def __vitals_thread(self):
+    def __recevei_vitals_callback(ch, method, properties, body):
+      vitals = serpent.loads(body)
+      self._data_nodes_connected.update_data_node_vitals(vitals['token'], vitals)
+
     try:
       brokker_channel = self.__brokker_connection.channel()
       brokker_channel.exchange_declare(exchange=VITALS_EXCHANGE_NAME, exchange_type='direct')
       queue = brokker_channel.queue_declare(queue='', exclusive=True)
       brokker_channel.queue_bind(exchange=VITALS_EXCHANGE_NAME, queue=queue.method.queue, routing_key='')
-      brokker_channel.basic_consume(queue=queue.method.queue, on_message_callback=self.__recevei_vitals_callback, auto_ack=True)
+      brokker_channel.basic_consume(queue=queue.method.queue, on_message_callback=__recevei_vitals_callback, auto_ack=True)
       brokker_channel.start_consuming()
     except Exception as e:
       print(f"Failed to declare exchange or consume: {e}")
 
-  def __recevei_vitals_callback(self, ch, method, properties, body):
-    vitals = serpent.loads(body)
-    
+  
 
   def report_shards(self, token: str, shard_name_list: list[str]):
     shard_tuples = [(shard.split('-')[0], int(shard.split('-')[1])) for shard in shard_name_list]
