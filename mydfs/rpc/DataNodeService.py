@@ -10,7 +10,7 @@ import serpent
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 from mydfs.utils.get_proxy_by_name import get_proxy_by_name
-from mydfs.models.DataNode.Shard import Shard
+from mydfs.models.DataNode.FileSystem import FileSystem
 from mydfs.utils.shared import *
 
 
@@ -29,10 +29,7 @@ class DataNodeService:
         print(f"DataNode {TOKEN} started")
         self.TOKEN = TOKEN
         self.__cluster_manager_proxy = get_proxy_by_name("cluster-manager")
-        self.__shards: list[Shard] = [
-            Shard(file_name=f"shard_{i}.dat", file_path="/tmp", shard_size=10)
-            for i in range(2)
-        ]
+        self.__file_system = FileSystem()
 
         try:
             self.__brokker_connection = pika.BlockingConnection(
@@ -93,6 +90,9 @@ class DataNodeService:
         except Exception as e:
             print(f"Failed to send vitals: {e}")
             exit(1)
+
+    def upload_shard(self, shard_name: str, shard_data: bytes):
+        self.__file_system.insert_shard(shard_name, shard_data)
 
 
 if __name__ == "__main__":
