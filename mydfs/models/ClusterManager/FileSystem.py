@@ -15,7 +15,7 @@ class FileSystem:
       self.files: dict[str, File] = {}
 
   @synchronized
-  def __create_file(self, name: str, size: int):
+  def create_file(self, name: str, size: int):
     self.files[name] = File(name, size)
 
   @synchronized
