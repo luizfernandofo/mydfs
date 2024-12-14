@@ -41,27 +41,33 @@ class ClusterManagerService:
             self.__brokker_connection.close()
 
     def __vitals_thread(self):
-        def __recevei_vitals_callback(ch, method, properties, body):
+        def __receive_vitals_callback(ch, method, properties, body):
             vitals = serpent.loads(body)
             self.__data_nodes_connected.update_data_node_vitals(vitals["token"], vitals)
-
+            print(self.__data_nodes_connected.get_data_nodes().keys())
+                
         try:
             brokker_channel = self.__brokker_connection.channel()
             brokker_channel.exchange_declare(
-                exchange=VITALS_EXCHANGE_NAME, exchange_type="direct"
+                exchange=VITALS_EXCHANGE_NAME, exchange_type="fanout"
             )
             queue = brokker_channel.queue_declare(queue="", exclusive=True)
             brokker_channel.queue_bind(
                 exchange=VITALS_EXCHANGE_NAME, queue=queue.method.queue, routing_key=""
             )
+        except Exception as e:
+            print(f"Failed to declare exchange or bind queue: {e}")
+        
+        try:
             brokker_channel.basic_consume(
                 queue=queue.method.queue,
-                on_message_callback=__recevei_vitals_callback,
+                on_message_callback=__receive_vitals_callback,
                 auto_ack=True,
             )
             brokker_channel.start_consuming()
         except Exception as e:
-            print(f"Failed to declare exchange or consume: {e}")
+            print(f"Failed to start consuming: {e}")
+        
 
     # ============== Exposed methods ==============
 
@@ -104,7 +110,7 @@ class ClusterManagerService:
 
         data_nodes_per_shard = []
         if len(suitable_data_nodes) == 1:
-            if self.__data_nodes_connected[suitable_data_nodes[0]].can_store_n_shards(
+            if self.__data_nodes_connected.get_data_nodes()[suitable_data_nodes[0]].can_store_n_shards(
                 shard_count
             ):
                 data_nodes_per_shard = [
@@ -116,7 +122,7 @@ class ClusterManagerService:
                     suitable_data_nodes[i % len(suitable_data_nodes)]
                 )
 
-        self.__file_system.__create_file(file_name, file_size)
+        self.__file_system.create_file(file_name, file_size)
         return Response(
             Response.Status.OK,
             Response.Body(
