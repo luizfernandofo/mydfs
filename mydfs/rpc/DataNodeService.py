@@ -14,13 +14,13 @@ from mydfs.models.DataNode.Shard import Shard
 from mydfs.utils.shared import *
 
 
-if os.path.exists('data_node_config.txt'):
+if False and os.path.exists('data_node_config.txt'):
   with open('data_node_config.txt', 'r') as f:
     TOKEN = f.read().strip()
 else:
   TOKEN = str(uuid.uuid4())
-  with open('data_node_config.txt', 'w') as f:
-    f.write(TOKEN)
+  # with open('data_node_config.txt', 'w') as f:
+  #   f.write(TOKEN)
 
 
 @Pyro5.api.expose
@@ -71,7 +71,7 @@ class DataNodeService:
   def __vitals_thread(self):
       try:
         channel = self.__brokker_connection.channel()
-        channel.exchange_declare(exchange=VITALS_EXCHANGE_NAME, exchange_type='direct')
+        channel.exchange_declare(exchange=VITALS_EXCHANGE_NAME, exchange_type='fanout')
         while self.__keep_running:
           vitals = self.__get_system_info()
           vitals.update({'token': self.TOKEN})
