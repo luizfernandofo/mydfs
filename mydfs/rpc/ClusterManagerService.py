@@ -1,3 +1,4 @@
+from math import ceil
 import sys
 import os
 import threading
@@ -9,16 +10,15 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '.
 from mydfs.models.ClusterManager.DataNodesConnected import DataNodesConnected
 from mydfs.models.ClusterManager.FileSystem import FileSystem
 from mydfs.utils.lock_decorator import synchronized
-
-BROKER_URL = "localhost"
-VITALS_EXCHANGE_NAME = "vitals"
+from mydfs.models.Reponse import Response
+from mydfs.utils.shared import *
 
 
 @Pyro5.api.expose
 class ClusterManagerService:
   def __init__(self):
     self.__file_system = FileSystem()
-    self._data_nodes_connected = DataNodesConnected()
+    self.__data_nodes_connected = DataNodesConnected()
 
     try:
       self.__brokker_connection = pika.BlockingConnection(pika.ConnectionParameters(BROKER_URL))
@@ -27,14 +27,12 @@ class ClusterManagerService:
       exit(1)
 
     try:
-      self.__keep_running = True
       self.__vitals_thread = threading.Thread(target=self.__vitals_thread)
       self.__vitals_thread.start()
     except Exception as e:
       print(f"Failed to start vitals thread: {e}")
 
   def __del__(self):
-    self.__keep_running = False
     if self.__vitals_thread.is_alive():
       self.__vitals_thread.join()
     if self.__brokker_connection.is_open:
@@ -43,7 +41,7 @@ class ClusterManagerService:
   def __vitals_thread(self):
     def __recevei_vitals_callback(ch, method, properties, body):
       vitals = serpent.loads(body)
-      self._data_nodes_connected.update_data_node_vitals(vitals['token'], vitals)
+      self.__data_nodes_connected.update_data_node_vitals(vitals['token'], vitals)
 
     try:
       brokker_channel = self.__brokker_connection.channel()
@@ -55,7 +53,7 @@ class ClusterManagerService:
     except Exception as e:
       print(f"Failed to declare exchange or consume: {e}")
 
-  
+  # ============== Exposed methods ==============
 
   def report_shards(self, token: str, shard_name_list: list[str]):
     shard_tuples = [(shard.split('-')[0], int(shard.split('-')[1])) for shard in shard_name_list]
@@ -65,8 +63,30 @@ class ClusterManagerService:
   def get_file_shards_owners(self, file_name: str):
     return [shard_owners for shard_owners in self.__file_system[file_name].shards.data_node_owners]
 
-  def start_upload(self, file_name: str, file_size: int):
-    pass
+  def start_upload(self, file_name: str, file_size: int) -> Response:
+    if file_name in self.__file_system.files:
+      return Response(Response.Status.FILE_ALREADY_EXISTS, Response.Body("File already exists"))
+
+    if not self.__data_nodes_connected.any_data_node_connected():
+      return Response(Response.Status.NO_DATA_NODES, Response.Body("No data nodes connected"))
+    
+    shard_count = ceil(file_size / SHARD_SIZE)
+    suitable_data_nodes = self.__data_nodes_connected.get_suitable_data_nodes_for_upload()
+    if len(suitable_data_nodes) == 0:
+      return Response(Response.Status.DATA_NODES_ARE_BUSY, Response.Body("The cluster is busy right now."))
+    
+    data_nodes_per_shard = []
+    if len(suitable_data_nodes) == 1:
+      if self.__data_nodes_connected[suitable_data_nodes[0]].can_store_n_shards(shard_count):
+        data_nodes_per_shard = [suitable_data_nodes[0] for _ in range(shard_count)]
+    elif len(suitable_data_nodes) > 1:
+      for i in range(shard_count):
+        data_nodes_per_shard.append(suitable_data_nodes[i % len(suitable_data_nodes)])
+    
+    self.__file_system.__create_file(file_name, file_size)
+    return Response(Response.Status.OK, Response.Body("Data nodes for upload", {'data_nodes_per_shard': data_nodes_per_shard}))
+    
+
 
 if __name__ == "__main__":
   print("Cluster Manager Service started")
