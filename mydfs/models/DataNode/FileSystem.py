@@ -28,7 +28,7 @@ class FileSystem:
                 f.write(shard_data)
         except Exception as e:
             print(f"Failed to write shard: {e}")
-            
+
         self.__insert_shard(Shard(shard_name, self.__DEFAULT_FOLDER_NAME + shard_name, len(shard_data)))
        
         
