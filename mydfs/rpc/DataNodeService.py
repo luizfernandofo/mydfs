@@ -11,11 +11,8 @@ import serpent
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
 from mydfs.utils.get_proxy_by_name import get_proxy_by_name
 from mydfs.models.DataNode.Shard import Shard
+from mydfs.utils.shared import *
 
-INTERVAL_VITALS_REPORT = 20
-
-BROKER_URL = "localhost"
-VITALS_EXCHANGE_NAME = "vitals"
 
 if os.path.exists('data_node_config.txt'):
   with open('data_node_config.txt', 'r') as f:
