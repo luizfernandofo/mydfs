@@ -9,6 +9,7 @@ class File():
   def __init__(self, name: str, size: int):
     self.name: str = name
     self.size: int = size
+    self.upload_finished: bool = False
     self.shards: list[Shard] = []
 
   @synchronized
