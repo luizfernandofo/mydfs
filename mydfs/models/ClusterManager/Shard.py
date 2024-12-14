@@ -6,8 +6,8 @@ from mydfs.utils.lock_decorator import synchronized
 
 
 class Shard():
-  def __init__(self, data_node_owner: list[str] = []):
-    self.data_node_owner = data_node_owner
+  def __init__(self, data_node_owners: list[str] = []):
+    self.data_node_owners = data_node_owners
     
   @synchronized
   def add_data_node_owner_if_not_exists(self, data_node_token: str):
