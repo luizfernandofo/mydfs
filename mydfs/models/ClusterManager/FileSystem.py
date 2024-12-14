@@ -15,6 +15,10 @@ class FileSystem:
       self.files: dict[str, File] = {}
 
   @synchronized
+  def __create_file(self, name: str, size: int):
+    self.files[name] = File(name, size)
+
+  @synchronized
   def __save_to_disk(self, file_path: str):
     with open(file_path, 'w') as f:
       json.dump(self.files, f, default=lambda o: o.__dict__)
