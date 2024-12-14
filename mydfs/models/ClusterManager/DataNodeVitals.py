@@ -1,5 +1,7 @@
-import time
+import time, sys, os
 
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..', '..')))
+from mydfs.utils.shared import *
 
 class DataNodeVitals:
   def __init__(self, token: str, cpu_usage: float, ram_available: int, disk_available: int):
@@ -14,3 +16,9 @@ class DataNodeVitals:
     self.__ram_available = ram_available
     self.__disk_available = disk_available
     self.__last_updated = time.time_ns()
+
+  def time_since_last_update(self) -> int:
+    return time.time_ns() - self.__last_updated
+  
+  def can_store_n_shards(self, n: int) -> bool:
+    return self.__disk_available > n * SHARD_SIZE
