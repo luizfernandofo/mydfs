@@ -27,5 +27,8 @@ class Response:
     def __setstate__(self, state):
         self.__dict__.update(state)
 
+    def __str__(self):
+        return f"Response(status_code={self.status_code}, body=(msg={self.body.msg}, data={self.body.data}))"
+
     def from_dict(d: dict):
         return Response(d['status_code'], Response.Body(d['body']['msg'], d['body']['data']))
