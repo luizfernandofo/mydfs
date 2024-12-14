@@ -2,6 +2,7 @@ class Response:
 
   class Status:
     OK = 200
+    FILE_ALREADY_EXISTS = 400
     NO_DATA_NODES = 501
     DATA_NODES_ARE_BUSY = 502
 
