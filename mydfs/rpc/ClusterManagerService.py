@@ -51,7 +51,7 @@ class ClusterManagerService:
 
   def __recevei_vitals_callback(self, ch, method, properties, body):
     vitals = serpent.loads(body)
-    print(vitals)
+    
 
   def report_shards(self, token: str, shard_name_list: list[str]):
     shard_tuples = [(shard.split('-')[0], int(shard.split('-')[1])) for shard in shard_name_list]
