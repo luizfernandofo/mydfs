@@ -11,12 +11,12 @@ class Shard():
     
   @synchronized
   def add_data_node_owner_if_not_exists(self, data_node_token: str):
-    if data_node_token not in self.data_node_owner:
-      self.data_node_owner.append(data_node_token)
+    if data_node_token not in self.data_node_owners:
+      self.data_node_owners.append(data_node_token)
 
   @synchronized
   def remove_data_node_owner(self, data_node_token: str):
-    self.data_node_owner.remove(data_node_token)
+    self.data_node_owners.remove(data_node_token)
 
   def get_replica_factor(self):
-    return len(self.data_node_owner)  
+    return len(self.data_node_owners)  

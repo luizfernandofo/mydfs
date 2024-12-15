@@ -19,6 +19,10 @@ class FileSystem:
     self.files[name] = File(name, size)
 
   @synchronized
+  def update_shard_owners_by_file_name(self, file_name: str, shard_index: int, data_node_token: str):
+    self.files[file_name].update_shard_owners(shard_index, data_node_token)
+
+  @synchronized
   def __save_to_disk(self, file_path: str):
     with open(file_path, 'w') as f:
       json.dump(self.files, f, default=lambda o: o.__dict__)
