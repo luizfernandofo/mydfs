@@ -79,12 +79,39 @@ class ClusterManagerService:
             self.__file_system.update_shard_owners_by_file_name(
                 file_name, shard_index, token
             )     
+    
+    def download_file(self, file_name: str) -> Response:
+        if not self.__file_system.file_exists(file_name):
+            return Response(
+                Response.Status.FILE_NOT_FOUND,
+                Response.Body("File not found"),
+            )
 
-    def get_file_shards_owners(self, file_name: str):
-        return [
-            shard_owners
-            for shard_owners in self.__file_system[file_name].shards.data_node_owners
-        ]
+        shards_owners = self.__file_system.get_shards_owners_by_file_name(file_name)
+        load_balanced_shard_owners = []
+        for s_o in shards_owners:
+            if len(s_o) == 1:
+                load_balanced_shard_owners.append([s_o[0]])
+            else:
+                tmp = []                
+                for owner in s_o:
+                    if len(tmp) == 2:
+                        break
+                    if self.__data_nodes_connected.data_node_isnt_stressed(owner):
+                        tmp.append(owner)
+                load_balanced_shard_owners.append(tmp)
+        
+        for shard in load_balanced_shard_owners:
+            if len(shard) == 0:
+                return Response(
+                    Response.Status.DATA_NODES_ARE_BUSY,
+                    Response.Body("Data nodes are busy right now."),
+                )
+            
+        return Response(
+            Response.Status.OK,
+            Response.Body("Data nodes for download", {"shards_owners": load_balanced_shard_owners, "file_size": self.__file_system.get_file_size(file_name)}),
+        )            
 
     def start_upload(self, file_name: str, file_size: int) -> Response:
         if file_name in self.__file_system.files:
