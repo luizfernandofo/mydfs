@@ -76,9 +76,9 @@ class ClusterManagerService:
             (shard.split("-")[0], int(shard.split("-")[1])) for shard in shard_name_list
         ]
         for file_name, shard_index in shard_tuples:
-            self.__file_system[file_name][
-                shard_index
-            ].add_data_node_owner_if_not_exists(token)
+            self.__file_system.update_shard_owners_by_file_name(
+                file_name, shard_index, token
+            )     
 
     def get_file_shards_owners(self, file_name: str):
         return [
