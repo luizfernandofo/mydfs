@@ -20,3 +20,7 @@ class Shard():
 
   def get_replica_factor(self):
     return len(self.data_node_owners)  
+  
+  @synchronized
+  def has_any_owner(self):
+    return len(self.data_node_owners) > 0
