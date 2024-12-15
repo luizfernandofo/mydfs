@@ -30,6 +30,8 @@ class FileSystem:
             print(f"Failed to write shard: {e}")
 
         self.__insert_shard(Shard(shard_name, self.__DEFAULT_FOLDER_NAME + shard_name, len(shard_data)))
-       
-        
+    
+    @synchronized
+    def get_all_files_names(self) -> list[str]:
+        return [shard.file_name for shard in self.files]
     

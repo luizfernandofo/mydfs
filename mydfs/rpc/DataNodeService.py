@@ -54,10 +54,10 @@ class DataNodeService:
             self.__brokker_connection.close()
         print(f"DataNode {self.TOKEN} stopped")
 
-    def __report_shards_periodically(self):
+    def __report_shards_to_cluster(self):
         try:
-            self.__cluster_manager_proxy.report_shards(
-                self.TOKEN, [shard.file_name for shard in self.__shards]
+            get_proxy_by_name("cluster-manager").report_shards(
+                self.TOKEN, self.__file_system.get_all_files_names()
             )
         except Exception as e:
             print(f"Failed to report shards: {e}")
@@ -93,6 +93,7 @@ class DataNodeService:
 
     def upload_shard(self, shard_name: str, shard_data: bytes):
         self.__file_system.insert_shard(shard_name, shard_data)
+        self.__report_shards_to_cluster()
 
 
 if __name__ == "__main__":
