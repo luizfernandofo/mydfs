@@ -1,4 +1,5 @@
 import sys, os, struct
+import time
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 from mydfs.utils.get_proxy_by_name import get_proxy_by_name
@@ -29,22 +30,29 @@ class Client:
             return
 
         res = self.__start_upload(file_name, os.path.getsize(file_path))
-        print(res)
+        file_size = os.path.getsize(file_path)
         data_nodes_per_shard = res.body.data["data_nodes_per_shard"]
 
+        time_start = time.time_ns()
         with open(file_path, "rb") as f:
-            shard_index = 0
             for i in range(0, len(data_nodes_per_shard)):
-                shard_name = f"{file_name}-{shard_index}"
+                shard_name = f"{file_name}-{i}"
                 shard_data = f.read(SHARD_SIZE)
-                print(type(struct.pack(f"{len(shard_data)}s", shard_data)))
-                print(f"Shard lido tem {len(shard_data)} bytes")
                 if not shard_data:
                     break
                 data_node_proxy = get_proxy_by_name(f"dn-{data_nodes_per_shard[i]}")
-                data_node_proxy.upload_shard(shard_name, struct.pack(f"{len(shard_data)}s", shard_data))
-
+                data_node_proxy._pyroSerializer = "marshal"
+                data_node_proxy.upload_shard(shard_name, shard_data)
+                data_node_proxy._pyroRelease()
+                print(f"{(i/len(data_nodes_per_shard)) * 100:.2f}%")
+        time_end = time.time_ns()
+        total_time = (time_end - time_start) / 1e9
+        file_size = (file_size / 1e6) #MB
+        mbs = file_size / total_time
+        print(f"Upload de arquivo {file_name} ({int(file_size)} MB) concluído.")
+        print(f"Taxa de transferência: {mbs:.2f} MB/s.")
+        print(f"Tempo de upload: {total_time:.2f} segundos.")
 
 if __name__ == "__main__":
     c = Client()
-    c.upload_file("arquitetura.pdf")
+    c.upload_file("4arquivo_grande.gz")
