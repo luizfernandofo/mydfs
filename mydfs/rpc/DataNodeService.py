@@ -91,9 +91,16 @@ class DataNodeService:
             print(f"Failed to send vitals: {e}")
             exit(1)
 
+    # ============== Exposed methods ==============
+
     def upload_shard(self, shard_name: str, shard_data: bytes):
         self.__file_system.insert_shard(shard_name, shard_data)
         self.__report_shards_to_cluster()
+
+    def download_shard(self, shard_name: str) -> bytes:
+        shard_path = self.__file_system.get_shard_by_name(shard_name).file_path
+        with open(shard_path, "rb") as f:
+            return f.read()
 
 
 if __name__ == "__main__":
