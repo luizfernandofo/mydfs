@@ -44,6 +44,10 @@ class DataNodesConnected:
     return dn
 
   @synchronized
+  def data_node_isnt_stressed(self, token: str) -> bool:
+    return self.__data_nodes[token].cpu_usage <= self.__CPU_USAGE_THRESHOLD
+
+  @synchronized
   def get_data_nodes(self) -> dict[str, DataNodeVitals]:
     return self.__data_nodes
 

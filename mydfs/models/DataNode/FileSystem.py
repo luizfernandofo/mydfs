@@ -35,3 +35,9 @@ class FileSystem:
     def get_all_files_names(self) -> list[str]:
         return [shard.file_name for shard in self.files]
     
+    @synchronized
+    def get_shard_by_name(self, shard_name: str) -> Shard:
+        for shard in self.files:
+            if shard.file_name == shard_name:
+                return shard
+        return None

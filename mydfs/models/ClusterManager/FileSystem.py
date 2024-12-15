@@ -23,6 +23,17 @@ class FileSystem:
     self.files[file_name].update_shard_owners(shard_index, data_node_token)
 
   @synchronized
+  def get_shards_owners_by_file_name(self, file_name: str) -> list[list[str]]:
+    return self.files[file_name].get_shards_owners()
+
+  @synchronized
+  def file_exists(self, file_name: str) -> bool:
+    return file_name in self.files
+  
+  def get_file_size(self, file_name: str) -> int:
+    return self.files[file_name].size
+
+  @synchronized
   def __save_to_disk(self, file_path: str):
     with open(file_path, 'w') as f:
       json.dump(self.files, f, default=lambda o: o.__dict__)
