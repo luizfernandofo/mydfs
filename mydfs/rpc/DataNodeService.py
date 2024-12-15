@@ -46,6 +46,12 @@ class DataNodeService:
         except Exception as e:
             print(f"Failed to start vitals thread: {e}")
 
+        try:
+            self.__replica_thread = threading.Thread(target=self.__replica_thread)
+            self.__replica_thread.start()
+        except Exception as e:
+            print(f"Failed to start replica thread: {e}")
+
     def __del__(self):
         self.__keep_running = False
         if self.__vitals_thread.is_alive():
@@ -90,6 +96,48 @@ class DataNodeService:
         except Exception as e:
             print(f"Failed to send vitals: {e}")
             exit(1)
+
+    def __replica_thread(self):
+        def __handle_replica_request_callback(ch, method, properties, body):
+            replica = serpent.loads(body)
+            shard_name = replica["shard_name"]
+            shard_owner = replica["shard_owner"]
+            
+            if self.__file_system.get_shard_by_name(shard_name) is None:
+                ch.basic_nack(delivery_tag=method.delivery_tag)
+                return
+
+            data_node_proxy = get_proxy_by_name(f"dn-{shard_owner}")
+            try:                
+                shard_data = data_node_proxy.download_shard(shard_name)
+                data_node_proxy._pyroRelease()
+                self.upload_shard(shard_name, shard_data)
+            except Exception as e:
+                print(f"Failed to download shard: {e}")
+                ch.basic_nack(delivery_tag=method.delivery_tag)
+
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+        
+        try:
+            brokker_channel = self.__brokker_connection.channel()
+            brokker_channel.exchange_declare(
+                exchange=REPLICA_EXCHANGE_NAME, exchange_type="direct"
+            )
+            brokker_channel.queue_declare(queue=REPLICA_QUEUE_NAME, durable=True)
+            brokker_channel.queue_bind(
+                exchange=REPLICA_EXCHANGE_NAME, queue=REPLICA_QUEUE_NAME, routing_key=""
+            )
+        except Exception as e:
+            print(f"Failed to declare exchange or bind queue: {e}")
+
+        try:
+            brokker_channel.basic_consume(
+                queue=REPLICA_QUEUE_NAME,
+                on_message_callback=__handle_replica_request_callback,
+            )
+            brokker_channel.start_consuming()
+        except Exception as e:
+            print(f"Failed to start consuming: {e}")
 
     # ============== Exposed methods ==============
 
