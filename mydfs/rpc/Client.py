@@ -91,7 +91,7 @@ class Client:
     def __threaded_download(self, file_name: str, file_size: int, shards_owners_list: list[list[str]]):
         time_start = time.time_ns()
         file_path = os.path.join(self.__files_folder_path + "/downloads/", file_name)
-        num_threads = min(len(shards_owners_list), 8)  # Number of threads to use
+        num_threads = min(len(shards_owners_list), NUM_THREADS_DOWNLOAD)  # Number of threads to use
         shards_per_thread = len(shards_owners_list) // num_threads
 
         def download_shards(thread_id: int):
