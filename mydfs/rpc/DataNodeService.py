@@ -15,13 +15,13 @@ from mydfs.models.DataNode.FileSystem import FileSystem
 from mydfs.utils.shared import *
 
 
-if False and os.path.exists("data_node_config.txt"):
+if os.path.exists("data_node_config.txt"):
     with open("data_node_config.txt", "r") as f:
         TOKEN = f.read().strip()
 else:
     TOKEN = str(uuid.uuid4())
-    # with open('data_node_config.txt', 'w') as f:
-    #   f.write(TOKEN)
+    with open('data_node_config.txt', 'w') as f:
+      f.write(TOKEN)
 
 
 @Pyro5.api.expose
