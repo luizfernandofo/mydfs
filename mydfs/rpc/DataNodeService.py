@@ -63,7 +63,7 @@ class DataNodeService:
     def __get_system_info(self):
         cpu_usage = psutil.cpu_percent(interval=1)
         ram_info = psutil.virtual_memory()
-        disk_info = psutil.disk_usage("/")
+        disk_info = psutil.disk_usage(os.getcwd())
         return {
             "cpu_usage": cpu_usage,
             "ram_available": ram_info.available,
