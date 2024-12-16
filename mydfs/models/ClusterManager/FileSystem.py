@@ -27,6 +27,10 @@ class FileSystem:
     return self.files[file_name].get_shards_owners()
 
   @synchronized
+  def decrease_replications_requested(self, file_name: str, shard_index: int):
+    self.files[file_name].get_shard_by_index(shard_index).decrease_replications_requested()
+
+  @synchronized
   def file_exists(self, file_name: str) -> bool:
     return file_name in self.files
   

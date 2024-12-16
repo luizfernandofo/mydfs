@@ -30,6 +30,10 @@ class File():
     return [shard.data_node_owners for shard in self.shards]
 
   @synchronized
+  def get_shards(self) -> list[Shard]:
+    return self.shards
+
+  @synchronized
   def update_shard_owners(self, shard_index: int, data_node_token: str):
     self.get_shard_by_index(shard_index).add_data_node_owner_if_not_exists(data_node_token)
     if not self.upload_finished:
