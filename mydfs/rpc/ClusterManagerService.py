@@ -28,12 +28,14 @@ class ClusterManagerService:
             self.__vitals_t.start()
         except Exception as e:
             print(f"Failed to start vitals thread: {e}")
+            exit(1)
 
         try:
             self.__integrity_thread = threading.Thread(target=self.__integrity_routine_thread)
             self.__integrity_thread.start()
         except Exception as e:
             print(f"Failed to start integrity routine thread: {e}")
+            exit(1)
 
     def __del__(self):
         if self.__vitals_thread.is_alive():
@@ -72,46 +74,52 @@ class ClusterManagerService:
             print(f"Failed to start consuming: {e}")
         
     def __integrity_routine_thread(self):
-        try:
-            brokker_connection = pika.BlockingConnection(
-                pika.ConnectionParameters(BROKER_URL)
-            )
-            channel = brokker_connection.channel()
-            channel.exchange_declare(
-                exchange=REPLICA_EXCHANGE_NAME, exchange_type="direct"
-            )
+        retries = 0
+        while self.__keep_running and retries < 3:
+            try:
+                with pika.BlockingConnection(pika.ConnectionParameters(BROKER_URL)) as brokker_connection:
+                    channel = brokker_connection.channel()
+                    channel.exchange_declare(
+                        exchange=REPLICA_EXCHANGE_NAME, exchange_type="direct"
+                    )
 
-            while self.__keep_running:
-                if len(self.__data_nodes_connected.get_data_nodes()) == 1:
-                    time.sleep(INTERVAL_ROUTINE_INTEGRITY)
-                    continue
-                
-                _replication_factor = min(REPLICATION_FACTOR, len(self.__data_nodes_connected.get_data_nodes()))
-                for file_name in self.__file_system.files:
-                    file: File = self.__file_system.files[file_name]
-                    if not file.upload_finished:
-                        continue
-                    shards = file.get_shards()
-                    for shard in shards:
-                        if (shard.replications_requested + shard.get_replication_factor()) < _replication_factor:
-                            for i in range(_replication_factor - shard.get_replication_factor()):
-                                body = {"shard_name": f"{file_name}-{shards.index(shard)}", "shard_owner": shard.data_node_owners[i % len(shard.data_node_owners)]}
-                                print(f"Replication requested for {file_name}-{shards.index(shard)} with shard owner {shard.data_node_owners[i % len(shard.data_node_owners)]}")
-                                channel.basic_publish(
-                                    exchange=REPLICA_EXCHANGE_NAME,
-                                    routing_key="",
-                                    body=serpent.dumps(body),
-                                    properties=pika.BasicProperties(
-                                        delivery_mode = pika.DeliveryMode.Persistent
-                                    )
-                                )
-                                shard.increase_replications_requested()                                        
-                        print(f"Replicas requested: {shard.replications_requested}")
-                
-                time.sleep(INTERVAL_ROUTINE_INTEGRITY)
-        except Exception as e:
-            print(f"Failed to execute integrity routine: {e}")
-            exit(1)
+                    while self.__keep_running:
+                        if len(self.__data_nodes_connected.get_data_nodes()) == 1:
+                            time.sleep(INTERVAL_ROUTINE_INTEGRITY)
+                            continue
+                        
+                        _replication_factor = min(REPLICATION_FACTOR, len(self.__data_nodes_connected.get_data_nodes()))
+                        for file_name in self.__file_system.files:
+                            file: File = self.__file_system.files[file_name]
+                            if not file.upload_finished:
+                                continue
+                            shards = file.get_shards()
+                            for shard in shards:
+                                if (shard.replications_requested + shard.get_replication_factor()) < _replication_factor:
+                                    for i in range(_replication_factor - shard.get_replication_factor()):
+                                        body = {"shard_name": f"{file_name}-{shards.index(shard)}", "shard_owner": shard.data_node_owners[i % len(shard.data_node_owners)]}
+                                        print(f"Replication requested for {file_name}-{shards.index(shard)} with shard owner {shard.data_node_owners[i % len(shard.data_node_owners)]}")
+                                        channel.basic_publish(
+                                            exchange=REPLICA_EXCHANGE_NAME,
+                                            routing_key="",
+                                            body=serpent.dumps(body),
+                                            properties=pika.BasicProperties(
+                                                delivery_mode = pika.DeliveryMode.Persistent
+                                            )
+                                        )
+                                        shard.increase_replications_requested()                                        
+                                    print(f"Replicas requested: {shard.replications_requested}")
+                        
+                        time.sleep(INTERVAL_ROUTINE_INTEGRITY)
+            except Exception as e:
+                print(f"Failed to execute integrity routine: {e}")
+                retries += 1
+
+            print(f"Integrity routine restarting for the {retries} time in 5 seconds")
+            time.sleep(5)
+            
+        print("Integrity routine thread stopped")
+        exit(1)
             
 
     # ============== Exposed methods ==============
@@ -234,4 +242,5 @@ if __name__ == "__main__":
         except Exception as e:
             print(f"Failed to locate nameserver: {e}")
             exit(1)
-        daemon.requestLoop()
+        else:
+            daemon.requestLoop()
