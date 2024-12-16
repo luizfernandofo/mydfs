@@ -9,6 +9,7 @@ import psutil
 import serpent
 
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
+from mydfs.models.Reponse import Response
 from mydfs.utils.get_proxy_by_name import get_proxy_by_name
 from mydfs.models.DataNode.FileSystem import FileSystem
 from mydfs.utils.shared import *
@@ -104,53 +105,89 @@ class DataNodeService:
             shard_owner = replica["shard_owner"]
 
             if self.__file_system.get_shard_by_name(shard_name) is not None:
-                print(properties.headers)
                 if (properties.headers is not None):
                     delivery_count = properties.headers["x-delivery-count"] if "x-delivery-count" in properties.headers else 0
-                    print(f"Delivery count {delivery_count} for shard {shard_name}")
                     if delivery_count > 0:
                         time.sleep(min((delivery_count * 2), 30))
-                ch.basic_nack(delivery_tag=method.delivery_tag)
+                ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
                 return
 
-            data_node_proxy = get_proxy_by_name(f"dn-{shard_owner}")
-            data_node_proxy._pyroSerializer = "marshal"
-            try:                
+            __retries_connection_to_dn = 0
+            __connected_to_dn = False
+            data_node_proxy = None
+            while not __connected_to_dn and __retries_connection_to_dn < 3:
+                print(f"Trying to connect to DataNode {shard_owner} for {__retries_connection_to_dn + 1} time")
+                try:
+                    data_node_proxy = get_proxy_by_name(f"dn-{shard_owner}")
+                    __connected_to_dn = True
+                except Exception as e:
+                    print(f"Failed to connect to DataNode {shard_owner} in {__retries_connection_to_dn + 1} attempt: {e}")
+                    __retries_connection_to_dn += 1
+                    
+                if __connected_to_dn:
+                    break
+                else:
+                    data_node_proxy = None
+                    print(f"Failed to connect to DataNode {shard_owner} to replicate shard {shard_name}. Retrying for the {__retries_connection_to_dn} time in 2 seconds")
+                    time.sleep(2)
+
+            if data_node_proxy is None:
+                print(f"Failed to connect to first shard owner. Searching for an alternative owner.")
+                res = Response.from_dict(get_proxy_by_name("cluster-manager").get_alternative_shard_owner(shard_name, shard_owner))
+                if res.status_code != Response.Status.OK:
+                    print(f"Failed to get alternative shard owner. Requeing message.")
+                    ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+                    return
+                
+                shard_owner = res.body.data["alternative_owner"]
+                print(f"Found alternative shard owner: {shard_owner}. Trying to connect...")
+                try:
+                    data_node_proxy = get_proxy_by_name(f"dn-{shard_owner}")
+                except Exception as e:
+                    print(f"Failed to connect to alternative shard owner. Requeing message.")
+                    ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
+                    return
+
+            try:
+                data_node_proxy._pyroSerializer = "marshal"
                 shard_data = data_node_proxy.download_shard(shard_name)
                 data_node_proxy._pyroRelease()
                 self.upload_shard(shard_name, shard_data)
-                print(f"Shard {shard_name} downloaded and uploaded")
+                print(f"Shard {shard_name} downloaded and replicated")
                 get_proxy_by_name("cluster-manager").decrease_replications_requested(shard_name)
-                print(f"Replication requested decreased for {shard_name}")
             except Exception as e:
                 print(f"Failed to download shard: {e}")
-                ch.basic_nack(delivery_tag=method.delivery_tag)
+                ch.basic_nack(delivery_tag=method.delivery_tag, requeue=True)
 
             ch.basic_ack(delivery_tag=method.delivery_tag)
         
-        try:
-            brokker_connection = pika.BlockingConnection(
-                pika.ConnectionParameters(BROKER_URL)
-            )
-            brokker_channel = brokker_connection.channel()
-            brokker_channel.exchange_declare(
-                exchange=REPLICA_EXCHANGE_NAME, exchange_type="direct"
-            )
-            brokker_channel.queue_declare(queue=REPLICA_QUEUE_NAME, durable=True, arguments={"x-queue-type": "quorum"})
-            brokker_channel.queue_bind(
-                exchange=REPLICA_EXCHANGE_NAME, queue=REPLICA_QUEUE_NAME, routing_key=""
-            )
-        except Exception as e:
-            print(f"Failed to declare exchange or bind queue: {e}")
-
-        try:
-            brokker_channel.basic_consume(
-                queue=REPLICA_QUEUE_NAME,
-                on_message_callback=__handle_replica_request_callback,
-            )
-            brokker_channel.start_consuming()
-        except Exception as e:
-            print(f"Failed to start consuming: {e}")
+        retries = 0
+        while self.__keep_running and retries < 3:
+            try:
+                with pika.BlockingConnection(pika.ConnectionParameters(BROKER_URL)) as brokker_connection:
+                    brokker_channel = brokker_connection.channel()
+                    brokker_channel.exchange_declare(
+                        exchange=REPLICA_EXCHANGE_NAME, exchange_type="direct"
+                    )
+                    brokker_channel.queue_declare(queue=REPLICA_QUEUE_NAME, durable=True, arguments={"x-queue-type": "quorum"})
+                    brokker_channel.queue_bind(
+                        exchange=REPLICA_EXCHANGE_NAME, queue=REPLICA_QUEUE_NAME, routing_key=""
+                    )
+                    brokker_channel.basic_consume(
+                        queue=REPLICA_QUEUE_NAME,
+                        on_message_callback=__handle_replica_request_callback,
+                    )
+                    brokker_channel.start_consuming()
+            except Exception as e:
+                print(f"Error in replica thread: {e}")
+                retries += 1
+            
+            print(f"Replica thread will restart for the {retries} time in 3 seconds")
+            time.sleep(3)
+        
+        print("Replica thread stopped")
+        if retries == 3:
+            exit(1)
 
     # ============== Exposed methods ==============
 
