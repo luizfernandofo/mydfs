@@ -14,6 +14,7 @@ from mydfs.models.ClusterManager.File import File
 from mydfs.utils.lock_decorator import synchronized
 from mydfs.models.Reponse import Response
 from mydfs.utils.shared import *
+from mydfs.utils.get_ip_by_interface import get_ip_by_interface
 
 
 @Pyro5.api.expose
@@ -48,34 +49,35 @@ class ClusterManagerService:
             dead_data_nodes = self.__data_nodes_connected.update_data_node_vitals(vitals["token"], vitals)
             self.__file_system.remove_dead_shard_owners(dead_data_nodes)
 
-        try:
-            brokker_connection = pika.BlockingConnection(
-                pika.ConnectionParameters(BROKER_URL)
-            )
-            brokker_channel = brokker_connection.channel()
-            brokker_channel.exchange_declare(
-                exchange=VITALS_EXCHANGE_NAME, exchange_type="fanout"
-            )
-            queue = brokker_channel.queue_declare(queue="", exclusive=True)
-            brokker_channel.queue_bind(
-                exchange=VITALS_EXCHANGE_NAME, queue=queue.method.queue, routing_key=""
-            )
-        except Exception as e:
-            print(f"Failed to declare exchange or bind queue: {e}")
-        
-        try:
-            brokker_channel.basic_consume(
-                queue=queue.method.queue,
-                on_message_callback=__receive_vitals_callback,
-                auto_ack=True,
-            )
-            brokker_channel.start_consuming()
-        except Exception as e:
-            print(f"Failed to start consuming: {e}")
+        while self.__keep_running:
+            try:
+                brokker_connection = pika.BlockingConnection(
+                    pika.ConnectionParameters(BROKER_URL)
+                )
+                brokker_channel = brokker_connection.channel()
+                brokker_channel.exchange_declare(
+                    exchange=VITALS_EXCHANGE_NAME, exchange_type="fanout"
+                )
+                queue = brokker_channel.queue_declare(queue="", exclusive=True)
+                brokker_channel.queue_bind(
+                    exchange=VITALS_EXCHANGE_NAME, queue=queue.method.queue, routing_key=""
+                )
+            except Exception as e:
+                print(f"Failed to declare exchange or bind queue: {e}")
+            
+            try:
+                brokker_channel.basic_consume(
+                    queue=queue.method.queue,
+                    on_message_callback=__receive_vitals_callback,
+                    auto_ack=True,
+                )
+                brokker_channel.start_consuming()
+            except Exception as e:
+                print(f"Failed to start consuming: {e}")
         
     def __integrity_routine_thread(self):
         retries = 0
-        while self.__keep_running and retries < 3:
+        while self.__keep_running:
             try:
                 with pika.BlockingConnection(pika.ConnectionParameters(BROKER_URL)) as brokker_connection:
                     channel = brokker_connection.channel()
@@ -251,7 +253,7 @@ class ClusterManagerService:
 
 if __name__ == "__main__":
     print("Cluster Manager Service started")
-    with Pyro5.api.Daemon() as daemon:
+    with Pyro5.api.Daemon(host=get_ip_by_interface()) as daemon:
         uri = daemon.register(ClusterManagerService(), "cluster.manager")
         try:
             ns = Pyro5.api.locate_ns()
