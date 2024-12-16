@@ -23,6 +23,9 @@ class Client:
     def print_cluster_manager_file_system(self):
         print(self.__cluster_manager_proxy.print_file_system())
 
+    def print_cluster_metrics(self):
+        print(self.__cluster_manager_proxy.get_cluster_metrics())
+
     def upload_file(self, file_name: str):
         if file_name.find("-") != -1:
             print("Nome de arquivo inválido. O arquivo não pode conter o caractere '-'")
@@ -135,6 +138,7 @@ class Client:
 
 if __name__ == "__main__":
     c = Client()
-    #c.upload_file("arquivo_grande.gz")
+    #c.upload_file("img.tif")
     #c.print_cluster_manager_file_system()
-    c.download_file("arquivo_grande.gz", "parallel")
+    c.print_cluster_metrics()
+    #c.download_file("arquivo_grande.gz", "parallel")

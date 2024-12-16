@@ -26,3 +26,11 @@ class DataNodeVitals:
   @property
   def cpu_usage(self) -> float:
     return self.__cpu_usage
+  
+  @property
+  def ram_available(self) -> int:
+    return self.__ram_available
+  
+  @property
+  def disk_available(self) -> int:
+    return self.__disk_available

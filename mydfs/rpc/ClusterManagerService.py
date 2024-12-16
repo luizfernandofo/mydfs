@@ -45,7 +45,7 @@ class ClusterManagerService:
             vitals = serpent.loads(body)
             dead_data_nodes = self.__data_nodes_connected.update_data_node_vitals(vitals["token"], vitals)
             self.__file_system.remove_dead_shard_owners(dead_data_nodes)
-            
+
         try:
             brokker_connection = pika.BlockingConnection(
                 pika.ConnectionParameters(BROKER_URL)
@@ -220,6 +220,9 @@ class ClusterManagerService:
 
     def print_file_system(self) -> str:
         return str(self.__file_system)
+    
+    def get_cluster_metrics(self) -> Response:
+        return self.__data_nodes_connected.get_cluster_metrics()
 
 if __name__ == "__main__":
     print("Cluster Manager Service started")

@@ -29,6 +29,22 @@ class DataNodesConnected:
 
     return self.__remove_dead_data_nodes()
 
+  def get_cluster_metrics(self) -> dict:
+    if len(self.__data_nodes) == 0:
+      return {
+        "avg_cpu_usage": 0,
+        "available_ram_mb": 0,
+        "available_disk_gb": 0
+      }
+    avg_cpu_usage = sum([data_node.cpu_usage for data_node in self.__data_nodes.values()]) / len(self.__data_nodes)
+    available_ram = sum([data_node.ram_available for data_node in self.__data_nodes.values()]) // (1024 * 1024)
+    available_disk = sum([data_node.disk_available for data_node in self.__data_nodes.values()]) // (1024 * 1024 * 1024)
+    return {
+      "avg_cpu_usage": f"{avg_cpu_usage:.2}%",
+      "available_ram": f"{available_ram} MB",
+      "available_disk": f"{available_disk} GB"
+    }
+
   @synchronized
   def any_data_node_connected(self) -> bool:
     return len(self.__data_nodes) > 0
