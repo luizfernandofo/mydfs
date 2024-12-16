@@ -43,8 +43,9 @@ class ClusterManagerService:
     def __vitals_thread(self):
         def __receive_vitals_callback(ch, method, properties, body):
             vitals = serpent.loads(body)
-            self.__data_nodes_connected.update_data_node_vitals(vitals["token"], vitals)
-                
+            dead_data_nodes = self.__data_nodes_connected.update_data_node_vitals(vitals["token"], vitals)
+            self.__file_system.remove_dead_shard_owners(dead_data_nodes)
+            
         try:
             brokker_connection = pika.BlockingConnection(
                 pika.ConnectionParameters(BROKER_URL)

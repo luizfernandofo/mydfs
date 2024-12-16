@@ -23,6 +23,13 @@ class FileSystem:
     self.files[file_name].update_shard_owners(shard_index, data_node_token)
 
   @synchronized
+  def remove_dead_shard_owners(self, data_node_tokens: list[str]):
+    for file in self.files.values():
+      for shard in file.get_shards():
+        for data_node_token in data_node_tokens:
+          shard.remove_data_node_owner(data_node_token)
+
+  @synchronized
   def get_shards_owners_by_file_name(self, file_name: str) -> list[list[str]]:
     return self.files[file_name].get_shards_owners()
 
