@@ -13,4 +13,8 @@ def get_proxy_by_name(name_service: str) -> Pyro5.api.Proxy:
       e.add_note(f"Failed to lookup service {name_service}")
       raise e
     else:
-      return Pyro5.api.Proxy(uri)
+      try: 
+        return Pyro5.api.Proxy(uri)
+      except Exception as e:
+        e.add_note(f"Failed to create proxy for service {name_service}")
+        raise e
