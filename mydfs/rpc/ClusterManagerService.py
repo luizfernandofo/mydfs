@@ -117,9 +117,10 @@ class ClusterManagerService:
 
             print(f"Integrity routine restarting for the {retries} time in 5 seconds")
             time.sleep(5)
-            
+
         print("Integrity routine thread stopped")
-        exit(1)
+        if retries == 3:
+            exit(1)
             
 
     # ============== Exposed methods ==============
