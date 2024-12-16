@@ -70,25 +70,31 @@ class DataNodeService:
         }
 
     def __vitals_thread(self):
-        try:
-            brokker_connection = pika.BlockingConnection(
-                pika.ConnectionParameters(BROKER_URL)
-            )
-            channel = brokker_connection.channel()
-            channel.exchange_declare(
-                exchange=VITALS_EXCHANGE_NAME, exchange_type="fanout"
-            )
-            while self.__keep_running:
-                vitals = self.__get_system_info()
-                vitals.update({"token": self.TOKEN})
-                channel.basic_publish(
-                    exchange=VITALS_EXCHANGE_NAME,
-                    routing_key="",
-                    body=serpent.dumps(vitals),
-                )
-                time.sleep(INTERVAL_VITALS_REPORT)
-        except Exception as e:
-            print(f"Failed to send vitals: {e}")
+        retries = 0
+        while self.__keep_running and retries < 3:
+            try:
+                with pika.BlockingConnection(pika.ConnectionParameters(BROKER_URL)) as brokker_connection:
+                    channel = brokker_connection.channel()
+                    channel.exchange_declare(
+                        exchange=VITALS_EXCHANGE_NAME, exchange_type="fanout"
+                    )
+                    while self.__keep_running:
+                        vitals = self.__get_system_info()
+                        vitals.update({"token": self.TOKEN})
+                        channel.basic_publish(
+                            exchange=VITALS_EXCHANGE_NAME,
+                            routing_key="",
+                            body=serpent.dumps(vitals),
+                        )
+                        time.sleep(INTERVAL_VITALS_REPORT)
+            except Exception as e:
+                print(f"Failed to send vitals: {e}")
+                retries += 1
+            print(f"Vitals thread will restart for the {retries} time in 5 seconds")
+            time.sleep(5)
+        
+        print("Vitals thread stopped")
+        if retries == 3:
             exit(1)
 
     def __replica_thread(self):
