@@ -45,6 +45,10 @@ class FileSystem:
     return self.files[file_name].size
 
   @synchronized
+  def get_alternative_shard_owner(self, shard_name: str, data_node_token: str) -> str:
+    return self.files[shard_name.split('-')[0]].get_alternative_shard_owner(int(shard_name.split('-')[1]), data_node_token)
+
+  @synchronized
   def __save_to_disk(self, file_path: str):
     with open(file_path, 'w') as f:
       json.dump(self.files, f, default=lambda o: o.__dict__)
