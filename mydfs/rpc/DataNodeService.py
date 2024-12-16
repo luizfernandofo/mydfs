@@ -13,6 +13,7 @@ from mydfs.models.Reponse import Response
 from mydfs.utils.get_proxy_by_name import get_proxy_by_name
 from mydfs.models.DataNode.FileSystem import FileSystem
 from mydfs.utils.shared import *
+from mydfs.utils.get_ip_by_interface import get_ip_by_interface
 
 
 if os.path.exists("data_node_config.txt"):
@@ -72,7 +73,7 @@ class DataNodeService:
 
     def __vitals_thread(self):
         retries = 0
-        while self.__keep_running and retries < 3:
+        while self.__keep_running:
             try:
                 with pika.BlockingConnection(pika.ConnectionParameters(BROKER_URL)) as brokker_connection:
                     channel = brokker_connection.channel()
@@ -162,7 +163,7 @@ class DataNodeService:
             ch.basic_ack(delivery_tag=method.delivery_tag)
         
         retries = 0
-        while self.__keep_running and retries < 3:
+        while self.__keep_running:
             try:
                 with pika.BlockingConnection(pika.ConnectionParameters(BROKER_URL)) as brokker_connection:
                     brokker_channel = brokker_connection.channel()
@@ -202,7 +203,7 @@ class DataNodeService:
 
 
 if __name__ == "__main__":
-    with Pyro5.api.Daemon() as daemon:
+    with Pyro5.api.Daemon(host=get_ip_by_interface()) as daemon:
         uri = daemon.register(DataNodeService(), f"dn-{TOKEN}")
         try:
             ns = Pyro5.api.locate_ns()
