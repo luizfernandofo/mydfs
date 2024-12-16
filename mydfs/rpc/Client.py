@@ -20,6 +20,9 @@ class Client:
     def __start_upload(self, file_name: str, file_size: int) -> Response:
         return Response.from_dict(self.__cluster_manager_proxy.start_upload(file_name, file_size))
 
+    def print_cluster_manager_file_system(self):
+        print(self.__cluster_manager_proxy.print_file_system())
+
     def upload_file(self, file_name: str):
         if file_name.find("-") != -1:
             print("Nome de arquivo inválido. O arquivo não pode conter o caractere '-'")
@@ -132,5 +135,6 @@ class Client:
 
 if __name__ == "__main__":
     c = Client()
-    #c.upload_file("img.tif")
-    c.download_file("ideaIU2024.3.1.tar.gz")
+    #c.upload_file("arquivo_grande.gz")
+    #c.print_cluster_manager_file_system()
+    c.download_file("arquivo_grande.gz", "parallel")
