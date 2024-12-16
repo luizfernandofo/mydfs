@@ -31,5 +31,6 @@ class Response:
     def __str__(self):
         return f"Response(status_code={self.status_code}, body=(msg={self.body.msg}, data={self.body.data}))"
 
-    def from_dict(d: dict):
-        return Response(d['status_code'], Response.Body(d['body']['msg'], d['body']['data']))
+    @classmethod
+    def from_dict(cls, d: dict) -> 'Response':
+        return cls(d['status_code'], cls.Body(d['body']['msg'], d['body']['data']))
