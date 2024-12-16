@@ -28,16 +28,7 @@ class DataNodeService:
     def __init__(self):
         print(f"DataNode {TOKEN} started")
         self.TOKEN = TOKEN
-        self.__cluster_manager_proxy = get_proxy_by_name("cluster-manager")
         self.__file_system = FileSystem()
-
-        try:
-            self.__brokker_connection = pika.BlockingConnection(
-                pika.ConnectionParameters(BROKER_URL)
-            )
-        except Exception as e:
-            print(f"Failed to connect to broker: {e}")
-            exit(1)
 
         try:
             self.__keep_running = True
@@ -56,8 +47,6 @@ class DataNodeService:
         self.__keep_running = False
         if self.__vitals_thread.is_alive():
             self.__vitals_thread.join()
-        if self.__brokker_connection.is_open:
-            self.__brokker_connection.close()
         print(f"DataNode {self.TOKEN} stopped")
 
     def __report_shards_to_cluster(self):
@@ -80,7 +69,10 @@ class DataNodeService:
 
     def __vitals_thread(self):
         try:
-            channel = self.__brokker_connection.channel()
+            brokker_connection = pika.BlockingConnection(
+                pika.ConnectionParameters(BROKER_URL)
+            )
+            channel = brokker_connection.channel()
             channel.exchange_declare(
                 exchange=VITALS_EXCHANGE_NAME, exchange_type="fanout"
             )
@@ -102,16 +94,26 @@ class DataNodeService:
             replica = serpent.loads(body)
             shard_name = replica["shard_name"]
             shard_owner = replica["shard_owner"]
-            
-            if self.__file_system.get_shard_by_name(shard_name) is None:
+
+            if self.__file_system.get_shard_by_name(shard_name) is not None:
+                print(properties.headers)
+                if (properties.headers is not None):
+                    delivery_count = properties.headers["x-delivery-count"] if "x-delivery-count" in properties.headers else 0
+                    print(f"Delivery count {delivery_count} for shard {shard_name}")
+                    if delivery_count > 0:
+                        time.sleep(min((delivery_count * 2), 30))
                 ch.basic_nack(delivery_tag=method.delivery_tag)
                 return
 
             data_node_proxy = get_proxy_by_name(f"dn-{shard_owner}")
+            data_node_proxy._pyroSerializer = "marshal"
             try:                
                 shard_data = data_node_proxy.download_shard(shard_name)
                 data_node_proxy._pyroRelease()
                 self.upload_shard(shard_name, shard_data)
+                print(f"Shard {shard_name} downloaded and uploaded")
+                get_proxy_by_name("cluster-manager").decrease_replications_requested(shard_name)
+                print(f"Replication requested decreased for {shard_name}")
             except Exception as e:
                 print(f"Failed to download shard: {e}")
                 ch.basic_nack(delivery_tag=method.delivery_tag)
@@ -119,11 +121,14 @@ class DataNodeService:
             ch.basic_ack(delivery_tag=method.delivery_tag)
         
         try:
-            brokker_channel = self.__brokker_connection.channel()
+            brokker_connection = pika.BlockingConnection(
+                pika.ConnectionParameters(BROKER_URL)
+            )
+            brokker_channel = brokker_connection.channel()
             brokker_channel.exchange_declare(
                 exchange=REPLICA_EXCHANGE_NAME, exchange_type="direct"
             )
-            brokker_channel.queue_declare(queue=REPLICA_QUEUE_NAME, durable=True)
+            brokker_channel.queue_declare(queue=REPLICA_QUEUE_NAME, durable=True, arguments={"x-queue-type": "quorum"})
             brokker_channel.queue_bind(
                 exchange=REPLICA_EXCHANGE_NAME, queue=REPLICA_QUEUE_NAME, routing_key=""
             )

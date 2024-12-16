@@ -2,6 +2,7 @@ from math import ceil
 import sys
 import os
 import threading
+import time
 import Pyro5.api
 import pika
 import serpent
@@ -9,6 +10,7 @@ import serpent
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..")))
 from mydfs.models.ClusterManager.DataNodesConnected import DataNodesConnected
 from mydfs.models.ClusterManager.FileSystem import FileSystem
+from mydfs.models.ClusterManager.File import File
 from mydfs.utils.lock_decorator import synchronized
 from mydfs.models.Reponse import Response
 from mydfs.utils.shared import *
@@ -19,35 +21,35 @@ class ClusterManagerService:
     def __init__(self):
         self.__file_system = FileSystem()
         self.__data_nodes_connected = DataNodesConnected()
+        self.__keep_running = True
 
         try:
-            self.__brokker_connection = pika.BlockingConnection(
-                pika.ConnectionParameters(BROKER_URL)
-            )
-        except Exception as e:
-            print(f"Failed to connect to broker: {e}")
-            exit(1)
-
-        try:
-            self.__vitals_thread = threading.Thread(target=self.__vitals_thread)
-            self.__vitals_thread.start()
+            self.__vitals_t = threading.Thread(target=self.__vitals_thread)
+            self.__vitals_t.start()
         except Exception as e:
             print(f"Failed to start vitals thread: {e}")
+
+        try:
+            self.__integrity_thread = threading.Thread(target=self.__integrity_routine_thread)
+            self.__integrity_thread.start()
+        except Exception as e:
+            print(f"Failed to start integrity routine thread: {e}")
 
     def __del__(self):
         if self.__vitals_thread.is_alive():
             self.__vitals_thread.join()
-        if self.__brokker_connection.is_open:
-            self.__brokker_connection.close()
+        
 
     def __vitals_thread(self):
         def __receive_vitals_callback(ch, method, properties, body):
             vitals = serpent.loads(body)
             self.__data_nodes_connected.update_data_node_vitals(vitals["token"], vitals)
-            print(self.__data_nodes_connected.get_data_nodes().keys())
                 
         try:
-            brokker_channel = self.__brokker_connection.channel()
+            brokker_connection = pika.BlockingConnection(
+                pika.ConnectionParameters(BROKER_URL)
+            )
+            brokker_channel = brokker_connection.channel()
             brokker_channel.exchange_declare(
                 exchange=VITALS_EXCHANGE_NAME, exchange_type="fanout"
             )
@@ -68,6 +70,48 @@ class ClusterManagerService:
         except Exception as e:
             print(f"Failed to start consuming: {e}")
         
+    def __integrity_routine_thread(self):
+        try:
+            brokker_connection = pika.BlockingConnection(
+                pika.ConnectionParameters(BROKER_URL)
+            )
+            channel = brokker_connection.channel()
+            channel.exchange_declare(
+                exchange=REPLICA_EXCHANGE_NAME, exchange_type="direct"
+            )
+
+            while self.__keep_running:
+                if len(self.__data_nodes_connected.get_data_nodes()) == 1:
+                    time.sleep(INTERVAL_ROUTINE_INTEGRITY)
+                    continue
+                
+                _replication_factor = min(REPLICATION_FACTOR, len(self.__data_nodes_connected.get_data_nodes()))
+                for file_name in self.__file_system.files:
+                    file: File = self.__file_system.files[file_name]
+                    if not file.upload_finished:
+                        continue
+                    shards = file.get_shards()
+                    for shard in shards:
+                        if (shard.replications_requested + shard.get_replication_factor()) < _replication_factor:
+                            for i in range(_replication_factor - shard.get_replication_factor()):
+                                body = {"shard_name": f"{file_name}-{shards.index(shard)}", "shard_owner": shard.data_node_owners[i % len(shard.data_node_owners)]}
+                                print(f"Replication requested for {file_name}-{shards.index(shard)} with shard owner {shard.data_node_owners[i % len(shard.data_node_owners)]}")
+                                channel.basic_publish(
+                                    exchange=REPLICA_EXCHANGE_NAME,
+                                    routing_key="",
+                                    body=serpent.dumps(body),
+                                    properties=pika.BasicProperties(
+                                        delivery_mode = pika.DeliveryMode.Persistent
+                                    )
+                                )
+                                shard.increase_replications_requested()                                        
+                        print(f"Replicas requested: {shard.replications_requested}")
+                
+                time.sleep(INTERVAL_ROUTINE_INTEGRITY)
+        except Exception as e:
+            print(f"Failed to execute integrity routine: {e}")
+            exit(1)
+            
 
     # ============== Exposed methods ==============
 
@@ -80,6 +124,11 @@ class ClusterManagerService:
                 file_name, shard_index, token
             )     
     
+    def decrease_replications_requested(self, shard_name: str):
+        file_name = shard_name.split("-")[0]
+        shard_index = int(shard_name.split("-")[1])
+        self.__file_system.decrease_replications_requested(file_name, shard_index)
+
     def download_file(self, file_name: str) -> Response:
         if not self.__file_system.file_exists(file_name):
             return Response(
@@ -168,6 +217,8 @@ class ClusterManagerService:
             Response.Body("Available files", {"files": available_files}),
         )
 
+    def print_file_system(self) -> str:
+        return str(self.__file_system)
 
 if __name__ == "__main__":
     print("Cluster Manager Service started")
