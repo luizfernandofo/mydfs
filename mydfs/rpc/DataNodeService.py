@@ -28,20 +28,22 @@ class DataNodeService:
     def __init__(self):
         print(f"DataNode {TOKEN} started")
         self.TOKEN = TOKEN
+        self.__keep_running = True
         self.__file_system = FileSystem()
 
         try:
-            self.__keep_running = True
-            self.__vitals_thread = threading.Thread(target=self.__vitals_thread)
-            self.__vitals_thread.start()
+            self.__vitals_t = threading.Thread(target=self.__vitals_thread)
+            self.__vitals_t.start()
         except Exception as e:
             print(f"Failed to start vitals thread: {e}")
+            exit(1)
 
         try:
-            self.__replica_thread = threading.Thread(target=self.__replica_thread)
-            self.__replica_thread.start()
+            self.__replica_t = threading.Thread(target=self.__replica_thread)
+            self.__replica_t.start()
         except Exception as e:
             print(f"Failed to start replica thread: {e}")
+            exit(1)
 
     def __del__(self):
         self.__keep_running = False
