@@ -216,6 +216,22 @@ class ClusterManagerService:
             ),
         )
 
+    def get_alternative_shard_owner(self, data_node_token: str, shard_name: str) -> Response:
+        alternative_owner = self.__file_system.get_alternative_shard_owner(shard_name, data_node_token)
+        if alternative_owner is None:
+            return Response(
+                Response.Status.NO_DATA_NODES,
+                Response.Body("No alternative shard owner"),
+            )
+        else:
+            return Response(
+                Response.Status.OK,
+                Response.Body(
+                    "Alternative shard owner",
+                    {"alternative_owner": self.__file_system.get_alternative_shard_owner(shard_name, data_node_token)},
+                )
+            )
+
     def get_available_files(self) -> Response:
         available_files = [
             file_name
